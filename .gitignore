@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+dist/
+**/.env
+**/e.env
+config.json
+obsidian_vault/*
+memory/*
