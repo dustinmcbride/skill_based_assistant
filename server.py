@@ -5,23 +5,61 @@ import logging
 import os
 import sys
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 # Ensure assistant/ is on sys.path when running via uvicorn from project root
 sys.path.insert(0, str(Path(__file__).parent))
 
-from fastapi import FastAPI, HTTPException, Request
+import httpx
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 import agent
 import memory
+from skills.notes.obsidian import _vault_path as _obsidian_vault_path
+from skills.trello.trello import _compact_overview, _get_cache
 from skills.email.agentmail import get_email_thread
-from user import load_user
+from skills.telegram import send_message as telegram_send
+from user import load_user, load_user_by_telegram_chat_id
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Personal Assistant")
+_TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+_TELEGRAM_WEBHOOK_URL = os.environ.get("TELEGRAM_WEBHOOK_URL", "")
+_TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if _TELEGRAM_BOT_TOKEN and _TELEGRAM_WEBHOOK_URL:
+        url = f"https://api.telegram.org/bot{_TELEGRAM_BOT_TOKEN}/setWebhook"
+        payload: dict = {"url": _TELEGRAM_WEBHOOK_URL}
+        if _TELEGRAM_WEBHOOK_SECRET:
+            payload["secret_token"] = _TELEGRAM_WEBHOOK_SECRET
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, json=payload)
+        if resp.is_success:
+            logger.info("Telegram webhook registered: %s", _TELEGRAM_WEBHOOK_URL)
+        else:
+            logger.warning("Telegram webhook registration failed: %s %s", resp.status_code, resp.text)
+    else:
+        logger.info("Telegram webhook not registered (TELEGRAM_BOT_TOKEN or TELEGRAM_WEBHOOK_URL not set)")
+    yield
+
+
+app = FastAPI(title="Personal Assistant", lifespan=lifespan)
+
+_COMMAND_API_KEY = os.environ.get("COMMAND_API_KEY", "")
+_bearer_scheme = HTTPBearer()
+
+
+def _require_api_key(credentials: HTTPAuthorizationCredentials = Security(_bearer_scheme)) -> None:
+    if not _COMMAND_API_KEY or not hmac.compare_digest(credentials.credentials, _COMMAND_API_KEY):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
 
 _WEBHOOK_SECRET = os.environ.get("AGENTMAIL_WEBHOOK_SECRET", "")
 _WEBHOOK_TOLERANCE_SECONDS = 300
@@ -48,45 +86,94 @@ def _verify_signature(secret: str, svix_id: str, svix_timestamp: str, svix_signa
     return False
 
 
-class CommandRequest(BaseModel):
-    message: str
-
-
-class CommandResponse(BaseModel):
-    response: str
-    skill: str | None = None
-    actions_taken: list[str] = []
-
 
 @app.get("/health")
 async def health():
     return {"status": "ok"}
 
 
-@app.post("/command/{username}", response_model=CommandResponse)
-async def command(username: str, body: CommandRequest):
+_OBSIDIAN_VAULT = Path(os.environ.get("OBSIDIAN_VAULT", "obsidian_vault")).expanduser()
+if not _OBSIDIAN_VAULT.is_absolute():
+    _OBSIDIAN_VAULT = Path(__file__).parent / _OBSIDIAN_VAULT
+_INBOX_PATH = _OBSIDIAN_VAULT / "Inbox.md"
+
+
+def _capture_context() -> str:
+    """Return a pre-fetched Trello overview and Obsidian file list for the capture prompt."""
+    lines = []
+
+    try:
+        cache = _get_cache()
+        lines.append("## Trello Boards & Lists\n")
+        lines.append(_compact_overview(cache))
+    except Exception as e:
+        lines.append(f"## Trello Boards & Lists\n(unavailable: {e})")
+
+    lines.append("\n\n## Obsidian Vault Files\n")
+    try:
+        vault = _obsidian_vault_path()
+        if vault.exists():
+            files = sorted(p.name for p in vault.rglob("*.md"))
+            lines.append("\n".join(files) if files else "(vault is empty)")
+        else:
+            lines.append("(vault not found)")
+    except Exception as e:
+        lines.append(f"(unavailable: {e})")
+
+    return "\n".join(lines)
+
+
+def _append_to_inbox(message: str) -> None:
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    _INBOX_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with _INBOX_PATH.open("a") as f:
+        f.write(f"\n## {timestamp}\n\n{message}\n")
+
+
+class CaptureRequest(BaseModel):
+    message: str
+
+
+@app.post("/capture/{username}", status_code=200)
+async def capture(username: str, body: CaptureRequest, background_tasks: BackgroundTasks, _: None = Security(_require_api_key)):
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    _INBOX_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with _INBOX_PATH.open("a") as f:
+        f.write(f"- [{now}] {body.message}\n")
+    logger.info("Capture inbox entry: %s", body.message[:200])
+
     try:
         user = load_user(username)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-    hist = memory.load(user)
-    hist.append({"role": "user", "content": body.message})
-
     try:
-        response_text, skill_name, actions_taken = agent.run(
-            hist, user=user, mode="command"
-        )
+        context = _capture_context()
     except Exception as e:
-        logger.exception("Agent loop error for user %s", username)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.warning("Failed to build capture context: %s", e)
+        context = ""
 
-    memory.save(hist, user)
-    return CommandResponse(
-        response=response_text,
-        skill=skill_name,
-        actions_taken=actions_taken,
-    )
+    capture_prompt = f"File this captured note: {body.message}"
+    if context:
+        capture_prompt += f"\n\n---\n\n{context}"
+
+    def _run_capture():
+        hist = [{"role": "user", "content": capture_prompt}]
+        try:
+            response_text, _, _ = agent.run(hist, user=user, mode="command")
+            logger.info("Capture agent response: %s", response_text[:500] if response_text else "(empty)")
+            if response_text and user.telegram_chat_id:
+                ok = telegram_send(user.telegram_chat_id, response_text)
+                logger.info("Capture telegram send to %s: %s", user.telegram_chat_id, "ok" if ok else "failed")
+            else:
+                logger.warning("Capture: no telegram_chat_id for user %s or empty response", username)
+        except Exception:
+            logger.exception("Capture agent error for user %s", username)
+
+    background_tasks.add_task(_run_capture)
+    return {"status": "received"}
+
+
 
 
 @app.post("/webhook/email")
@@ -138,6 +225,50 @@ async def webhook_email(request: Request):
         logger.exception("Agent loop error processing webhook")
         raise HTTPException(status_code=500, detail=str(e))
     logger.info("Webhook processed: skill=%s actions=%s", skill_name, actions_taken)
+    return {"status": "ok", "skill": skill_name, "actions_taken": actions_taken}
+
+
+@app.post("/webhook/telegram")
+async def webhook_telegram(request: Request):
+    if _TELEGRAM_WEBHOOK_SECRET:
+        token = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if not hmac.compare_digest(token, _TELEGRAM_WEBHOOK_SECRET):
+            raise HTTPException(status_code=401, detail="Invalid secret token")
+
+    payload = await request.json()
+    message = payload.get("message") or payload.get("edited_message", {})
+    if not message:
+        return {"status": "ignored", "reason": "no message"}
+
+    chat_id = str(message.get("chat", {}).get("id", ""))
+    text = message.get("text", "").strip()
+
+    if not chat_id or not text:
+        return {"status": "ignored", "reason": "missing chat_id or text"}
+
+    logger.info("Telegram message: chat_id=%r text=%r", chat_id, text[:200])
+
+    user = load_user_by_telegram_chat_id(chat_id)
+    if user is None:
+        logger.warning("Unknown Telegram chat_id: %r", chat_id)
+        return {"status": "ignored", "reason": "unknown chat_id"}
+
+    hist = memory.load(user)
+    hist.append({"role": "user", "content": text})
+
+    try:
+        response_text, skill_name, actions_taken = agent.run(hist, user=user, mode="command")
+    except Exception as e:
+        logger.exception("Agent loop error for Telegram user %s", user.username)
+        telegram_send(chat_id, "Sorry, something went wrong.")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    memory.save(hist, user)
+
+    if response_text:
+        telegram_send(chat_id, response_text)
+
+    logger.info("Telegram reply sent: skill=%s actions=%s", skill_name, actions_taken)
     return {"status": "ok", "skill": skill_name, "actions_taken": actions_taken}
 
 

@@ -22,6 +22,7 @@ class User:
     username: str
     display_name: str
     history_path: Path
+    telegram_chat_id: str | None = None
 
 
 def load_user(username: str) -> User:
@@ -43,4 +44,13 @@ def load_user(username: str) -> User:
         username=username,
         display_name=config_entry.get("name") or username.capitalize(),
         history_path=base / "history.json",
+        telegram_chat_id=config_entry.get("telegram_chat_id"),
     )
+
+
+def load_user_by_telegram_chat_id(chat_id: str) -> "User | None":
+    """Return the User whose telegram_chat_id matches, or None."""
+    for entry in _KNOWN_USERS.values():
+        if str(entry.get("telegram_chat_id", "")) == str(chat_id):
+            return load_user(entry["id"])
+    return None
