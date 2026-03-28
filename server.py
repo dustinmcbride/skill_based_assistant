@@ -52,12 +52,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Personal Assistant", lifespan=lifespan)
 
-_COMMAND_API_KEY = os.environ.get("COMMAND_API_KEY", "")
+_CAPTURE_API_KEY = os.environ.get("CAPTURE_API_KEY", "")
 _bearer_scheme = HTTPBearer()
 
 
 def _require_api_key(credentials: HTTPAuthorizationCredentials = Security(_bearer_scheme)) -> None:
-    if not _COMMAND_API_KEY or not hmac.compare_digest(credentials.credentials, _COMMAND_API_KEY):
+    if not _CAPTURE_API_KEY or not hmac.compare_digest(credentials.credentials, _CAPTURE_API_KEY):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 

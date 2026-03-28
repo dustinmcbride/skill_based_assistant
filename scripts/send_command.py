@@ -140,7 +140,7 @@ _load_env()
 _host = os.environ.get("HOST", "localhost")
 _port = os.environ.get("PORT", "5055")
 HOST = f"http://{_host}:{_port}"
-API_KEY = os.environ.get("COMMAND_API_KEY", "")
+API_KEY = os.environ.get("CAPTURE_API_KEY", "")
 
 
 def _load_config() -> dict:
