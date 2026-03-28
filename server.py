@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Security
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 
 import agent
@@ -53,11 +53,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Personal Assistant", lifespan=lifespan)
 
 _CAPTURE_API_KEY = os.environ.get("CAPTURE_API_KEY", "")
-_bearer_scheme = HTTPBearer()
+_api_key_header = APIKeyHeader(name="X-API-Key")
 
 
-def _require_api_key(credentials: HTTPAuthorizationCredentials = Security(_bearer_scheme)) -> None:
-    if not _CAPTURE_API_KEY or not hmac.compare_digest(credentials.credentials, _CAPTURE_API_KEY):
+def _require_api_key(api_key: str = Security(_api_key_header)) -> None:
+    if not _CAPTURE_API_KEY or not hmac.compare_digest(api_key, _CAPTURE_API_KEY):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 

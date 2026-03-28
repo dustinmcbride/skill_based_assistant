@@ -62,6 +62,25 @@ Response:
 }
 ```
 
+### Capture mode (API)
+
+Append a quick note to the inbox and let the agent file it (runs in the background; confirmation sent via Telegram):
+
+```bash
+curl -X POST http://localhost:5055/capture/tim \
+  -H 'Content-Type: application/json' \
+  -H 'X-API-Key: your-secret-key-here' \
+  -d '{"message": "buy oat milk on the way home"}'
+```
+
+Response:
+
+```json
+{"status": "received"}
+```
+
+The agent processes the note asynchronously and sends a Telegram confirmation when done.
+
 Health check: `GET /health`
 
 ## Configuration

@@ -205,7 +205,7 @@ def main() -> None:
         data=payload,
         headers={
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {API_KEY}",
+            "X-API-Key": API_KEY,
         },
         method="POST",
     )
