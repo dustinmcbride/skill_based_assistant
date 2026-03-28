@@ -1,12 +1,14 @@
 # Personal Assistant
 
-A modular personal assistant built on the Anthropic SDK. Supports voice/API commands and interactive chat, routes requests to skill domains automatically, and dispatches tools to local Python functions or remote MCP servers.
+A modular personal assistant built on the Anthropic SDK. Supports voice/API commands, interactive chat, and webhook-driven automation. Routes requests to skill domains automatically and dispatches tools to local Python functions or remote MCP servers.
 
 ## Features
 
-- **Two interaction modes** — command (API, no follow-up questions) and chat (interactive CLI)
-- **Multi-user** — isolated history, config, and skill overrides per user
+- **Three interaction modes** — chat (interactive CLI), command (API, no follow-up questions), and capture (async note intake)
+- **Multi-user** — isolated history, config, and personas per user
 - **Just-in-time skill routing** — a fast cheap model picks the right skill before the main agent runs; skill instructions are injected into the system prompt only when needed
+- **Telegram bot** — bidirectional messaging via webhook; agent responses sent back to user
+- **Email automation** — AgentMail webhook automatically detects and files travel info from incoming emails
 - **Zero-friction extensibility** — drop a folder with a `SKILL.md` and a `.py` file, it works
 
 ## Requirements
@@ -23,7 +25,7 @@ cd assistant
 uv sync --extra dev
 
 cp .env.sample .env
-# edit .env and set ANTHROPIC_API_KEY (and any optional vars)
+# edit .env and fill in ANTHROPIC_API_KEY and any integrations you want
 ```
 
 ## Usage
@@ -31,7 +33,7 @@ cp .env.sample .env
 ### Chat mode (CLI)
 
 ```bash
-uv run python run.py --user tim 
+uv run python run.py --user tim
 ```
 
 Start a fresh session (clears history):
@@ -40,31 +42,13 @@ Start a fresh session (clears history):
 uv run python run.py --user tim --fresh
 ```
 
-### Command mode (API)
+### Capture mode (API)
+
+Append a quick note to the inbox and let the agent file it. Runs in the background; sends a Telegram confirmation when done.
 
 ```bash
 uv run python server.py
 ```
-
-```bash
-curl -X POST http://localhost:5055/command/tim \
-  -H 'Content-Type: application/json' \
-  -d '{"message": "remind me to call the dentist tomorrow morning"}'
-```
-
-Response:
-
-```json
-{
-  "response": "Done — added a reminder for tomorrow at 9am.",
-  "skill": "calendar",
-  "actions_taken": ["create_event"]
-}
-```
-
-### Capture mode (API)
-
-Append a quick note to the inbox and let the agent file it (runs in the background; confirmation sent via Telegram):
 
 ```bash
 curl -X POST http://localhost:5055/capture/tim \
@@ -73,15 +57,35 @@ curl -X POST http://localhost:5055/capture/tim \
   -d '{"message": "buy oat milk on the way home"}'
 ```
 
-Response:
+Response (immediate):
 
 ```json
 {"status": "received"}
 ```
 
-The agent processes the note asynchronously and sends a Telegram confirmation when done.
+Or use the included script:
+
+```bash
+python scripts/send_capture.py -u tim -m "buy oat milk on the way home"
+
+# Random shorthand lists (for testing)
+python scripts/send_capture.py --chore
+python scripts/send_capture.py --grocery
+python scripts/send_capture.py --admin
+python scripts/send_capture.py --thought
+```
 
 Health check: `GET /health`
+
+## Webhooks
+
+### Telegram
+
+The server registers a Telegram webhook on startup. Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_URL` — the bot will receive messages, run them through the agent, and reply.
+
+### Email (AgentMail)
+
+Point your AgentMail webhook at `POST /webhook/email`. Incoming emails are automatically scanned for travel information and filed to `Trips/` in the Obsidian vault.
 
 ## Configuration
 
@@ -90,24 +94,59 @@ Health check: `GET /health`
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `ANTHROPIC_API_KEY` | Yes | Anthropic API key |
-| `HASS_URL` | No | Home Assistant base URL (e.g. `http://homeassistant.local:8123`) |
-| `HASS_TOKEN` | No | Home Assistant long-lived access token |
-| `OBSIDIAN_VAULT` | No | Path to Obsidian vault (default: `~/Documents/Obsidian`) |
+| `CAPTURE_API_KEY` | Yes | API key for the `/capture` endpoint |
+| `CONFIG_FILE_URL` | No | URL to load user config JSON (supports `file://` and GitHub raw paths) |
+| `GITHUB_PAT` | No | GitHub PAT for authenticated access to `CONFIG_FILE_URL` |
+| `OBSIDIAN_VAULT` | No | Path to Obsidian vault (default: `obsidian_vault`) |
+| `ALLOWED_PATHS` | No | Comma-separated paths the filesystem skill can access (default: `OBSIDIAN_VAULT`) |
+| `TELEGRAM_BOT_TOKEN` | No | Telegram bot token from BotFather |
+| `TELEGRAM_WEBHOOK_URL` | No | Public URL where Telegram sends updates |
+| `TELEGRAM_WEBHOOK_SECRET` | No | Optional secret token for webhook auth |
+| `AGENTMAIL_API_KEY` | No | AgentMail API key |
+| `AGENTMAIL_INBOX_ID` | No | AgentMail inbox to monitor |
+| `AGENTMAIL_WEBHOOK_SECRET` | No | Svix webhook secret for signature verification |
+| `TRELLO_API_KEY` | No | Trello API key |
+| `TRELLO_TOKEN` | No | Trello OAuth token |
 | `HOST` | No | Server bind host (default: `0.0.0.0`) |
 | `PORT` | No | Server bind port (default: `5055`) |
+| `ASSISTANT_DIR` | No | Base directory for assistant data (default: `~/.assistant`) |
 
+### Remote config
 
-The `context` field is injected into the system prompt every session.
+Set `CONFIG_FILE_URL` to a JSON file defining users and persona URLs:
+
+```json
+{
+  "soul_base_url": "file:///path/to/soul.md",
+  "users": [
+    {
+      "id": "tim",
+      "name": "Tim Fish",
+      "persona_url": "file:///path/to/personas/tim.md",
+      "telegram_chat_id": "123456789"
+    }
+  ]
+}
+```
+
+GitHub raw paths are supported (no `https://` prefix needed):
+
+```
+CONFIG_FILE_URL=owner/repo/refs/heads/main/path/to/config.json
+```
 
 ## Skills
 
 | Domain | Description |
 |--------|-------------|
-| `filesystem` | Read, write, list, and search files on the local filesystem |
-| `web` | Search the web and fetch content from URLs |
 | `calendar` | Manage calendar events, reminders, and scheduling |
-| `homelab` | Control smart home devices via Home Assistant |
+| `email` | Check and read emails via AgentMail |
+| `filesystem` | Read, write, list, and search files on the local filesystem |
 | `notes` | Read, create, and search notes in an Obsidian vault |
+| `tasks` | Route todos to Trello (actionable) or Obsidian (notes/ideas) |
+| `telegram` | Send messages via Telegram |
+| `trello` | Manage Trello boards, lists, and cards |
+| `trips` | Extract and file travel information to the Obsidian vault |
 
 ### Adding a skill
 
@@ -132,7 +171,6 @@ Rules for skill functions:
 - Must return `str`
 - Should handle exceptions internally and return an error string
 
-
 ## MCP Servers
 
 Edit `mcp_servers.py` to add remote MCP servers (Google Calendar, Gmail, Home Assistant, etc.). Uncomment the entries and fill in the URLs — auth is handled externally by the MCP server.
@@ -147,21 +185,26 @@ MCP_SERVERS = [
 
 ```
 assistant/
-├── config.py           # Constants, model names, mode prompts
-├── user.py             # User loading and auto-provisioning
-├── memory.py           # Per-user conversation history
-├── skill_loader.py     # Skill discovery and routing
+├── config.py           # Constants, model names, mode prompts, remote config loading
+├── user.py             # User loading and persona management
+├── memory.py           # Per-user conversation history with smart trimming
+├── skill_loader.py     # Skill discovery and just-in-time routing
 ├── agent.py            # Agentic tool-use loop
 ├── mcp_servers.py      # Remote MCP server list
-├── server.py           # FastAPI command mode endpoint
+├── server.py           # FastAPI server (capture, Telegram, email webhooks)
 ├── run.py              # CLI chat mode entrypoint
 ├── .env.sample         # Environment variable template
+├── scripts/
+│   └── send_capture.py # CLI helper to send capture requests
 ├── skills/
-│   ├── filesystem/
-│   ├── web/
 │   ├── calendar/
-│   ├── homelab/
-│   └── notes/
+│   ├── email/
+│   ├── filesystem/
+│   ├── notes/
+│   ├── tasks/
+│   ├── telegram/
+│   ├── trello/
+│   └── trips/
 └── tests/
 ```
 

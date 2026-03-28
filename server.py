@@ -153,7 +153,12 @@ async def capture(username: str, body: CaptureRequest, background_tasks: Backgro
         logger.warning("Failed to build capture context: %s", e)
         context = ""
 
-    capture_prompt = f"File this captured note: {body.message}"
+    capture_prompt = (
+        f"File this captured note: {body.message}\n\n"
+        f"IMPORTANT: Do NOT read Inbox.md. It is an append-only log — the note has already been "
+        f"appended there. Only take action if the note should be filed somewhere else "
+        f"(e.g. a shopping list, a specific note, a todo). Otherwise just confirm it was captured."
+    )
     if context:
         capture_prompt += f"\n\n---\n\n{context}"
 
