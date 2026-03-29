@@ -1,4 +1,5 @@
 import base64
+import collections
 import hashlib
 import hmac
 import logging
@@ -51,6 +52,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Personal Assistant", lifespan=lifespan)
+
+# Dedup Telegram updates by update_id — keeps last 1000 to bound memory
+_SEEN_UPDATE_IDS: collections.OrderedDict = collections.OrderedDict()
+_MAX_SEEN_UPDATES = 1000
 
 _CAPTURE_API_KEY = os.environ.get("CAPTURE_API_KEY", "")
 _api_key_header = APIKeyHeader(name="X-API-Key")
@@ -228,7 +233,7 @@ async def webhook_email(request: Request):
         _, skill_name, actions_taken = agent.run(hist, user=None, mode="command")
     except Exception as e:
         logger.exception("Agent loop error processing webhook")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"status": "error", "detail": str(e)}
     logger.info("Webhook processed: skill=%s actions=%s", skill_name, actions_taken)
     return {"status": "ok", "skill": skill_name, "actions_taken": actions_taken}
 
@@ -241,6 +246,16 @@ async def webhook_telegram(request: Request):
             raise HTTPException(status_code=401, detail="Invalid secret token")
 
     payload = await request.json()
+
+    update_id = payload.get("update_id")
+    if update_id is not None:
+        if update_id in _SEEN_UPDATE_IDS:
+            logger.info("Telegram duplicate update_id=%s, ignoring", update_id)
+            return {"status": "ignored", "reason": "duplicate"}
+        _SEEN_UPDATE_IDS[update_id] = True
+        if len(_SEEN_UPDATE_IDS) > _MAX_SEEN_UPDATES:
+            _SEEN_UPDATE_IDS.popitem(last=False)
+
     message = payload.get("message") or payload.get("edited_message", {})
     if not message:
         return {"status": "ignored", "reason": "no message"}
@@ -266,7 +281,7 @@ async def webhook_telegram(request: Request):
     except Exception as e:
         logger.exception("Agent loop error for Telegram user %s", user.username)
         telegram_send(chat_id, "Sorry, something went wrong.")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"status": "error", "detail": str(e)}
 
     memory.save(hist, user)
 

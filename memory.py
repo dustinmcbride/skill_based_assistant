@@ -24,7 +24,7 @@ def save(history: list[dict], user) -> None:
     path.write_text(json.dumps(history, indent=2))
 
 
-def trim(history: list[dict], max_turns: int = 40) -> list[dict]:
+def trim(history: list[dict], max_turns: int = 20) -> list[dict]:
     """
     Keep the last max_turns complete turn pairs (user + assistant).
     Never trims mid-tool-exchange — always finds a clean boundary.

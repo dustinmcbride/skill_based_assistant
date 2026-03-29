@@ -9,3 +9,4 @@ dist/
 config.json
 obsidian_vault/*
 memory/*
+.venv/

@@ -88,7 +88,13 @@ def run(
     # Trim history before sending to stay within context
     working_history = memory_module.trim(list(history))
 
+    max_iterations = 25
+    iteration = 0
     while True:
+        iteration += 1
+        if iteration > max_iterations:
+            logger.warning("Agent loop hit max_iterations=%d, breaking", max_iterations)
+            return "", skill_name, actions_taken
         kwargs: dict = dict(
             model=AGENT_MODEL,
             max_tokens=MAX_TOKENS,
@@ -98,8 +104,10 @@ def run(
         )
         if MCP_SERVERS:
             kwargs["mcp_servers"] = MCP_SERVERS
-
-        response = client.messages.create(**kwargs)
+            kwargs["betas"] = ["mcp-client-2025-04-04"]
+            response = client.beta.messages.create(**kwargs)
+        else:
+            response = client.messages.create(**kwargs)
 
         # Append assistant turn to both histories (serialize SDK objects to plain dicts)
         assistant_turn = {"role": "assistant", "content": _serialize_content(response.content)}
