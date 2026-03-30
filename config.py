@@ -103,6 +103,60 @@ def _load_additional_skill_context() -> str:
         return ""
 
 
+def list_dir_url(dir_url: str) -> list[dict]:
+    """List files in a directory URL. Returns list of {name, url} dicts.
+
+    For file:// URLs, lists files in the local directory.
+    For GitHub paths (owner/repo/refs/heads/branch/path), uses the GitHub Contents API.
+    Each returned dict has 'name' (filename) and 'url' (loadable URL for that file).
+    """
+    if dir_url.startswith("file"):
+        local_path = Path(dir_url.split("://", 1)[1])
+        return [
+            {"name": f.name, "url": f"file://{f}"}
+            for f in sorted(local_path.iterdir())
+            if f.is_file()
+        ]
+    else:
+        # GitHub path: owner/repo/refs/heads/branch/sub/path
+        # Parse into owner, repo, ref, and subpath
+        parts = dir_url.split("/")
+        # parts[0]=owner, parts[1]=repo, parts[2]="refs", parts[3]="heads", parts[4]=branch
+        owner = parts[0]
+        repo = parts[1]
+        branch = parts[4]
+        subpath = "/".join(parts[5:]) if len(parts) > 5 else ""
+        api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{subpath}?ref={branch}"
+        github_pat = os.getenv("GITHUB_PAT", "")
+        headers = {"Authorization": f"token {github_pat}"} if github_pat else {}
+        response = httpx.get(api_url, headers=headers, timeout=10)
+        response.raise_for_status()
+        entries = response.json()
+        result = []
+        for entry in entries:
+            if entry.get("type") == "file":
+                # Build a GitHub raw path compatible with _load_url
+                file_raw_path = f"{owner}/{repo}/refs/heads/{branch}/{subpath}/{entry['name']}".replace("//", "/")
+                result.append({"name": entry["name"], "url": file_raw_path})
+        return result
+
+
+def _load_external_skill_dirs() -> list[str]:
+    return _CONFIG.get("external_skill_dirs", [])
+
+
+def get_user_skill_config(user_id: str, skill_name: str) -> dict:
+    """Return the skill-specific config dict for a user, or {} if not set.
+
+    Reads from config.json: users[i].skills.<skill_name>
+    """
+    for user_entry in _CONFIG.get("users", []):
+        if user_entry.get("id") == user_id:
+            return (user_entry.get("skills") or {}).get(skill_name, {})
+    return {}
+
+
 SOUL_CONTENT: str = _load_soul()
 USER_PERSONAS: dict[str, str] = _load_personas()
 ADDITIONAL_SKILL_CONTEXT: str = _load_additional_skill_context()
+EXTERNAL_SKILL_DIRS: list[str] = _load_external_skill_dirs()

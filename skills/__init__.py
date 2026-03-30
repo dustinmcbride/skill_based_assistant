@@ -11,9 +11,11 @@ Usage in a skill module:
 """
 
 import importlib
+import importlib.util
 import inspect
 import pkgutil
 import sys
+import tempfile
 from pathlib import Path
 from typing import get_type_hints
 
@@ -53,6 +55,21 @@ def dispatch(name: str, inputs: dict) -> str:
     return fn(**inputs)
 
 
+def _load_module_from_path(module_name: str, file_path: Path):
+    import logging
+    try:
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        if spec is None or spec.loader is None:
+            return
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = mod
+        spec.loader.exec_module(mod)
+    except Exception as e:
+        logging.getLogger(__name__).warning(
+            "Failed to import external skill module %s: %s", module_name, e
+        )
+
+
 def _load_all():
     global _loaded
     if _loaded:
@@ -80,6 +97,54 @@ def _load_all():
                 logging.getLogger(__name__).warning(
                     "Failed to import skill module %s: %s", modname, e
                 )
+
+    # Load external skill dirs
+    try:
+        from config import EXTERNAL_SKILL_DIRS, _load_url, list_dir_url
+    except Exception:
+        EXTERNAL_SKILL_DIRS = []
+
+    import logging
+    ext_logger = logging.getLogger(__name__)
+
+    for dir_url in EXTERNAL_SKILL_DIRS:
+        dir_name = dir_url.rstrip("/").rsplit("/", 1)[-1]
+        try:
+            files = list_dir_url(dir_url)
+        except Exception as e:
+            ext_logger.warning("Failed to list external skill dir %s: %s", dir_url, e)
+            continue
+
+        for file_info in files:
+            name = file_info["name"]
+            if not name.endswith(".py"):
+                continue
+            stem = Path(name).stem
+            module_name = f"skills_ext.{dir_name}.{stem}"
+
+            file_url = file_info["url"]
+            if file_url.startswith("file"):
+                local_path = Path(file_url.split("://", 1)[1])
+                _load_module_from_path(module_name, local_path)
+            else:
+                # GitHub: download to temp file then load
+                try:
+                    content = _load_url(file_url)
+                except Exception as e:
+                    ext_logger.warning("Failed to fetch %s: %s", file_url, e)
+                    continue
+                try:
+                    with tempfile.NamedTemporaryFile(
+                        suffix=".py", delete=False, mode="w", encoding="utf-8"
+                    ) as tmp:
+                        tmp.write(content)
+                        tmp_path = Path(tmp.name)
+                    _load_module_from_path(module_name, tmp_path)
+                finally:
+                    try:
+                        tmp_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
 
 
 _TYPE_MAP = {

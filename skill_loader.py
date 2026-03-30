@@ -6,7 +6,7 @@ from pathlib import Path
 import yaml
 import anthropic
 
-from config import ADDITIONAL_SKILL_CONTEXT, ROUTER_MODEL, SKILLS_DIR
+from config import ADDITIONAL_SKILL_CONTEXT, EXTERNAL_SKILL_DIRS, ROUTER_MODEL, SKILLS_DIR, _load_url
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,11 @@ def _parse_frontmatter(text: str) -> dict:
         return {}
 
 
+def _skill_name_from_url(dir_url: str) -> str:
+    """Return the last non-empty path component of a URL as the skill domain name."""
+    return dir_url.rstrip("/").rsplit("/", 1)[-1]
+
+
 def discover_skills() -> dict[str, str]:
     """Return {domain_name: description} for all skill domains."""
     result = {}
@@ -42,6 +47,17 @@ def discover_skills() -> dict[str, str]:
         text = skill_md.read_text()
         fm = _parse_frontmatter(text)
         result[domain] = fm.get("description") or domain
+
+    for dir_url in EXTERNAL_SKILL_DIRS:
+        domain = _skill_name_from_url(dir_url)
+        skill_md_url = dir_url.rstrip("/") + "/SKILL.md"
+        try:
+            text = _load_url(skill_md_url)
+            fm = _parse_frontmatter(text)
+            result[domain] = fm.get("description") or domain
+        except Exception as e:
+            logger.warning("Failed to load SKILL.md for external skill %s: %s", domain, e)
+
     return result
 
 
@@ -85,9 +101,22 @@ def _additional_context_section(skill_name: str) -> str | None:
 def load_skill_instructions(skill_name: str) -> str | None:
     """Return full SKILL.md content for the given domain, or None."""
     path = _skills_dir() / skill_name / "SKILL.md"
-    if not path.exists():
-        return None
-    instructions = path.read_text()
+    if path.exists():
+        instructions = path.read_text()
+    else:
+        # Fall back to external skill dirs
+        instructions = None
+        for dir_url in EXTERNAL_SKILL_DIRS:
+            if _skill_name_from_url(dir_url) == skill_name:
+                skill_md_url = dir_url.rstrip("/") + "/SKILL.md"
+                try:
+                    instructions = _load_url(skill_md_url)
+                except Exception as e:
+                    logger.warning("Failed to load instructions for external skill %s: %s", skill_name, e)
+                break
+        if instructions is None:
+            return None
+
     extra = _additional_context_section(skill_name)
     if extra:
         instructions += f"\n\n## Personal context\n{extra}"
