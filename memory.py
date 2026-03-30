@@ -37,7 +37,14 @@ def trim(history: list[dict], max_turns: int = 20) -> list[dict]:
     # pending tool_use blocks (i.e., the last assistant turn has stop_reason end_turn
     # or we find the next user message).
     # Simple approach: find "user" message boundaries and keep last max_turns of them.
-    user_indices = [i for i, m in enumerate(history) if m.get("role") == "user"]
+    user_indices = [
+        i for i, m in enumerate(history)
+        if m.get("role") == "user"
+        and not (
+            isinstance(m.get("content"), list)
+            and any(b.get("type") == "tool_result" for b in m["content"] if isinstance(b, dict))
+        )
+    ]
 
     if len(user_indices) <= max_turns:
         return history

@@ -92,5 +92,17 @@ def _load_personas() -> dict[str, str]:
     return personas
 
 
+def _load_additional_skill_context() -> str:
+    url = _CONFIG.get("additional_skill_context_url", "")
+    if not url:
+        return ""
+    try:
+        return _load_url(url)
+    except Exception as e:
+        logger.warning("Failed to load additional skill context: %s", e)
+        return ""
+
+
 SOUL_CONTENT: str = _load_soul()
 USER_PERSONAS: dict[str, str] = _load_personas()
+ADDITIONAL_SKILL_CONTEXT: str = _load_additional_skill_context()

@@ -1,11 +1,12 @@
 import logging
+import re
 import sys
 from pathlib import Path
 
 import yaml
 import anthropic
 
-from config import ROUTER_MODEL, SKILLS_DIR
+from config import ADDITIONAL_SKILL_CONTEXT, ROUTER_MODEL, SKILLS_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +71,24 @@ def select_skill(user_message: str) -> str | None:
         return None
 
 
+def _additional_context_section(skill_name: str) -> str | None:
+    """Return the additional context for a skill from ADDITIONAL_SKILL_CONTEXT, or None."""
+    if not ADDITIONAL_SKILL_CONTEXT:
+        return None
+    pattern = rf"^## {re.escape(skill_name)}\s*\n(.*?)(?=^## |\Z)"
+    match = re.search(pattern, ADDITIONAL_SKILL_CONTEXT, re.MULTILINE | re.DOTALL)
+    if match:
+        return match.group(1).strip() or None
+    return None
+
+
 def load_skill_instructions(skill_name: str) -> str | None:
     """Return full SKILL.md content for the given domain, or None."""
     path = _skills_dir() / skill_name / "SKILL.md"
-    if path.exists():
-        return path.read_text()
-    return None
+    if not path.exists():
+        return None
+    instructions = path.read_text()
+    extra = _additional_context_section(skill_name)
+    if extra:
+        instructions += f"\n\n## Personal context\n{extra}"
+    return instructions

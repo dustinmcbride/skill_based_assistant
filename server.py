@@ -21,7 +21,7 @@ import agent
 import memory
 from skills.notes.obsidian import _vault_path as _obsidian_vault_path
 from skills.trello.trello import _compact_overview, _get_cache
-from skills.email.agentmail import get_email_thread
+from skills.process_email.agentmail import get_email_thread
 from skills.telegram import send_message as telegram_send
 from user import load_user, load_user_by_telegram_chat_id
 

@@ -16,13 +16,24 @@ from user import User
 logger = logging.getLogger(__name__)
 
 
+_SERVER_SIDE_TYPES = {"server_tool_use", "server_tool_result"}
+
+
 def _serialize_content(content) -> list[dict]:
-    """Convert SDK content blocks (TextBlock, ToolUseBlock, etc.) to plain dicts."""
+    """Convert SDK content blocks (TextBlock, ToolUseBlock, etc.) to plain dicts.
+
+    Filters out server_tool_use and server_tool_result blocks — the API produces
+    these for MCP calls but rejects them if sent back in subsequent turns.
+    """
     result = []
     for block in content:
         if isinstance(block, dict):
+            if block.get("type") in _SERVER_SIDE_TYPES:
+                continue
             result.append(block)
         else:
+            if getattr(block, "type", None) in _SERVER_SIDE_TYPES:
+                continue
             result.append(block.model_dump())
     return result
 
