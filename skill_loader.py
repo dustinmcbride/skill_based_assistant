@@ -78,6 +78,7 @@ def select_skill(user_message: str) -> str | None:
             system=_ROUTER_SYSTEM,
             messages=[{"role": "user", "content": prompt}],
         )
+        logger.info("LLM usage: model=%s input_tokens=%d output_tokens=%d", ROUTER_MODEL, resp.usage.input_tokens, resp.usage.output_tokens)
         result = resp.content[0].text.strip().lower()
         if result == "none" or result not in skills:
             return None

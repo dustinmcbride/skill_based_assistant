@@ -13,11 +13,14 @@ Usage in a skill module:
 import importlib
 import importlib.util
 import inspect
+import logging
 import pkgutil
 import sys
 import tempfile
 from pathlib import Path
 from typing import get_type_hints
+
+logger = logging.getLogger(__name__)
 
 _REGISTRY: dict[str, dict] = {}
 _loaded = False
@@ -56,7 +59,6 @@ def dispatch(name: str, inputs: dict) -> str:
 
 
 def _load_module_from_path(module_name: str, file_path: Path):
-    import logging
     try:
         spec = importlib.util.spec_from_file_location(module_name, file_path)
         if spec is None or spec.loader is None:
@@ -64,17 +66,15 @@ def _load_module_from_path(module_name: str, file_path: Path):
         mod = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = mod
         spec.loader.exec_module(mod)
+        logger.info("Loaded external skill module: %s", module_name)
     except Exception as e:
-        logging.getLogger(__name__).warning(
-            "Failed to import external skill module %s: %s", module_name, e
-        )
+        logger.warning("Failed to import external skill module %s: %s", module_name, e)
 
 
 def _load_all():
     global _loaded
     if _loaded:
         return
-    _loaded = True
 
     skills_dir = Path(__file__).parent
     package_name = __name__  # "skills"
@@ -92,11 +92,9 @@ def _load_all():
         if not ispkg and modname != package_name:
             try:
                 importlib.import_module(modname)
+                logger.info("Loaded built-in skill module: %s", modname)
             except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(
-                    "Failed to import skill module %s: %s", modname, e
-                )
+                logger.warning("Failed to import skill module %s: %s", modname, e)
 
     # Load external skill dirs
     try:
@@ -104,15 +102,12 @@ def _load_all():
     except Exception:
         EXTERNAL_SKILL_DIRS = []
 
-    import logging
-    ext_logger = logging.getLogger(__name__)
-
     for dir_url in EXTERNAL_SKILL_DIRS:
         dir_name = dir_url.rstrip("/").rsplit("/", 1)[-1]
         try:
             files = list_dir_url(dir_url)
         except Exception as e:
-            ext_logger.warning("Failed to list external skill dir %s: %s", dir_url, e)
+            logger.warning("Failed to list external skill dir %s: %s", dir_url, e)
             continue
 
         for file_info in files:
@@ -131,7 +126,7 @@ def _load_all():
                 try:
                     content = _load_url(file_url)
                 except Exception as e:
-                    ext_logger.warning("Failed to fetch %s: %s", file_url, e)
+                    logger.warning("Failed to fetch %s: %s", file_url, e)
                     continue
                 try:
                     with tempfile.NamedTemporaryFile(
@@ -145,6 +140,9 @@ def _load_all():
                         tmp_path.unlink(missing_ok=True)
                     except Exception:
                         pass
+
+    _loaded = True
+    logger.info("All skills loaded. Registered tools: %s", sorted(_REGISTRY.keys()))
 
 
 _TYPE_MAP = {

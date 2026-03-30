@@ -48,6 +48,11 @@ async def lifespan(app: FastAPI):
             logger.warning("Telegram webhook registration failed: %s %s", resp.status_code, resp.text)
     else:
         logger.info("Telegram webhook not registered (TELEGRAM_BOT_TOKEN or TELEGRAM_WEBHOOK_URL not set)")
+
+    import skills as _skills
+    tools = _skills.get_tools()
+    logger.info("Skills loaded at boot: %s", [t["name"] for t in tools])
+
     yield
 
 

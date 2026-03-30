@@ -120,6 +120,8 @@ def run(
         else:
             response = client.messages.create(**kwargs)
 
+        logger.info("LLM usage: model=%s input_tokens=%d output_tokens=%d", AGENT_MODEL, response.usage.input_tokens, response.usage.output_tokens)
+
         # Append assistant turn to both histories (serialize SDK objects to plain dicts)
         assistant_turn = {"role": "assistant", "content": _serialize_content(response.content)}
         working_history.append(assistant_turn)

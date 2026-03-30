@@ -129,7 +129,7 @@ def list_dir_url(dir_url: str) -> list[dict]:
         api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{subpath}?ref={branch}"
         github_pat = os.getenv("GITHUB_PAT", "")
         headers = {"Authorization": f"token {github_pat}"} if github_pat else {}
-        response = httpx.get(api_url, headers=headers, timeout=10)
+        response = httpx.get(api_url, headers=headers, timeout=10, follow_redirects=True)
         response.raise_for_status()
         entries = response.json()
         result = []
