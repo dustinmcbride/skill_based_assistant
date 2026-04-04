@@ -175,9 +175,13 @@ def load_user_context(channel: str, channel_id: str) -> "UserContext":
 def load_user_context_by_id(user_id: str, channel: str = "cli") -> "UserContext":
     """
     Look up a user by user_id and channel.
-    Raises ValueError if the user is not in config.
+    Raises ValueError if the user is not in config or has an invalid format.
     Used by run.py (CLI) where the username is always known.
     """
+    if not USERNAME_RE.match(user_id):
+        raise ValueError(
+            f"Invalid user_id {user_id!r}. Must match ^[a-z0-9-]+$"
+        )
     if user_id not in _KNOWN_USERS:
         raise ValueError(
             f"Unknown user {user_id!r}. Known users: {list(_KNOWN_USERS)}"
