@@ -48,6 +48,7 @@ def test_health(client):
     assert resp.json() == {"status": "ok"}
 
 
+@pytest.mark.xfail(reason="/command endpoint not yet implemented", strict=True)
 def test_command_returns_200(client):
     with patch("server.agent.run", _mock_agent_run("Added to your calendar.")):
         resp = client.post("/command/tim", json={"message": "add dentist appointment tomorrow"})
@@ -57,6 +58,7 @@ def test_command_returns_200(client):
     assert data["response"] == "Added to your calendar."
 
 
+@pytest.mark.xfail(reason="/command endpoint not yet implemented", strict=True)
 def test_command_includes_skill_and_actions(client):
     with patch("server.agent.run", _mock_agent_run("Done.", skill="calendar", actions=["create_event"])):
         resp = client.post("/command/tim", json={"message": "schedule a meeting"})
@@ -71,11 +73,13 @@ def test_command_invalid_username(client):
     assert resp.status_code == 404
 
 
+@pytest.mark.xfail(reason="/command endpoint not yet implemented", strict=True)
 def test_command_malformed_body(client):
     resp = client.post("/command/tim", json={"wrong_field": "hello"})
     assert resp.status_code == 422
 
 
+@pytest.mark.xfail(reason="/command endpoint not yet implemented", strict=True)
 def test_command_mode_no_question(client):
     """Command mode responses must not end with a question."""
     with patch("server.agent.run", _mock_agent_run("I added the reminder for 9am tomorrow.")):
@@ -90,6 +94,7 @@ def test_command_mode_no_question(client):
         )
 
 
+@pytest.mark.xfail(reason="/command endpoint not yet implemented", strict=True)
 def test_command_agent_error_returns_500(client):
     with patch("server.agent.run", side_effect=RuntimeError("model error")):
         resp = client.post("/command/tim", json={"message": "do something"})

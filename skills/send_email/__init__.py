@@ -23,22 +23,24 @@ def lookup_email_recipient(name: str) -> str:
     Returns a JSON object with 'email', 'name', and 'persona' for drafting a tailored email.
     If not found, returns an error — ask the sender for the address instead.
     """
-    from config import _CONFIG, USER_PERSONAS
+    from config import _CONFIG
+    from user_context import _load_persona
 
     name_lower = name.strip().lower()
     for entry in _CONFIG.get("users", []):
         user_id = entry.get("id", "")
         display_name = entry.get("name", "")
         if name_lower == user_id.lower() or name_lower == display_name.lower():
-            email = entry.get("email")
+            channels = entry.get("channels", {})
+            email = channels.get("email")
             if not email:
                 return json.dumps({"error": f"User '{display_name}' has no email address configured."})
-            persona = USER_PERSONAS.get(user_id, "")
+            persona = _load_persona(entry.get("persona_url"))
             return json.dumps({
-                "email": email,
+                "email": str(email),
                 "user_id": user_id,
                 "name": display_name,
-                "persona": persona or "No persona configured for this user.",
+                "persona": persona,
             })
 
     known = [e.get("name") or e.get("id") for e in _CONFIG.get("users", []) if e.get("id")]

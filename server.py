@@ -284,7 +284,7 @@ async def webhook_telegram(request: Request):
     try:
         response_text, skill_name, actions_taken = agent.run(hist, user=user, mode="command")
     except Exception as e:
-        logger.exception("Agent loop error for Telegram user %s", user.username)
+        logger.exception("Agent loop error for Telegram user %s", user.user_id)
         telegram_send(chat_id, "Sorry, something went wrong.")
         return {"status": "error", "detail": str(e)}
 

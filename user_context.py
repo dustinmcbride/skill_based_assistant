@@ -6,7 +6,7 @@ from pathlib import Path
 
 import anthropic
 
-from config import AGENT_MODEL, ASSISTANT_DIR, _CONFIG, _load_url
+from config import AGENT_MODEL, ASSISTANT_DIR, ROUTER_MODEL, _CONFIG, _load_url
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +113,7 @@ def build_cross_channel_summary(ctx: "UserContext") -> str:
     try:
         client = anthropic.Anthropic()
         response = client.messages.create(
-            model=AGENT_MODEL,
+            model=ROUTER_MODEL,
             max_tokens=200,
             system=(
                 "Summarize the following recent user activity across channels. "
