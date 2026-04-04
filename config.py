@@ -78,20 +78,6 @@ def _load_soul() -> str:
         return ""
 
 
-def _load_personas() -> dict[str, str]:
-    personas: dict[str, str] = {}
-    for user_entry in _CONFIG.get("users", []):
-        user_id = user_entry.get("id")
-        persona_url = user_entry.get("persona_url")
-        if not user_id or not persona_url:
-            continue
-        try:
-            personas[user_id] = _load_url(persona_url)
-        except Exception as e:
-            logger.warning("Failed to load persona for %s: %s", user_id, e)
-    return personas
-
-
 def _load_additional_skill_context() -> str:
     url = _CONFIG.get("additional_skill_context_url", "")
     if not url:
@@ -157,6 +143,5 @@ def get_user_skill_config(user_id: str, skill_name: str) -> dict:
 
 
 SOUL_CONTENT: str = _load_soul()
-USER_PERSONAS: dict[str, str] = _load_personas()
 ADDITIONAL_SKILL_CONTEXT: str = _load_additional_skill_context()
 EXTERNAL_SKILL_DIRS: list[str] = _load_external_skill_dirs()
