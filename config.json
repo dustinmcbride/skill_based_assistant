@@ -1,0 +1,35 @@
+{
+  "soul_base_url": "file:///Users/dustinmcbride/git/self-hosted/assistant/office_of_tim_fish/soul.md",
+  "additional_skill_context_url": "file:///Users/dustinmcbride/git/self-hosted/assistant/office_of_tim_fish/additional_skill_context.md",
+  "external_skill_dirs": [
+    "file:///Users/dustinmcbride/git/self-hosted/assistant/skills/sauna/"
+  ],
+  "users": [
+    {
+      "id": "dustin",
+      "name": "Tim Fish",
+      "persona_url": "file:///Users/dustinmcbride/git/self-hosted/assistant/office_of_tim_fish/personas/dustin.md",
+      "channels": {
+        "telegram": "6211085845",
+        "slack": "U09JULETA74",
+        "email": "dustin@example.com"
+      },
+      "skills": {
+        "sauna": {
+          "login": "dustinbm@gmail.com",
+          "password": "cidhog-cutto9-mujMiv"
+        }
+      }
+    },
+    {
+      "id": "savanna",
+      "name": "Savanna",
+      "persona_url": "file:///Users/dustinmcbride/git/self-hosted/assistant/office_of_tim_fish/personas/savanna.md",
+      "channels": {
+        "telegram": "-5241403184",
+        "slack": "U09JN8JGW1Z",
+        "email": "savanna@example.com"
+      }
+    }
+  ]
+}
