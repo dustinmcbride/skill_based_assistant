@@ -4,14 +4,14 @@ from typing import Literal
 import anthropic
 
 import memory as memory_module
-from config import AGENT_MODEL, MAX_TOKENS, MODE_PROMPTS, SOUL_CONTENT, SYSTEM_PROMPT, USER_PERSONAS
+from config import AGENT_MODEL, MAX_TOKENS, MODE_PROMPTS, SOUL_CONTENT, SYSTEM_PROMPT
 from mcp_servers import MCP_SERVERS
 from skill_loader import (
     load_skill_instructions,
     select_skill,
 )
 from skills import dispatch, get_tools
-from user import User
+from user_context import UserContext
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ def _serialize_content(content) -> list[dict]:
 
 
 def build_system_prompt(
-    user: User | None,
+    user: "UserContext | None",
     mode: str,
     skill_name: str | None,
     skill_instructions: str | None,
@@ -49,10 +49,11 @@ def build_system_prompt(
         parts.append(f"\n## Identity\n{SOUL_CONTENT}")
     if user is not None:
         user_section = f"\n## User\nName: {user.display_name}"
-        persona = USER_PERSONAS.get(user.username, "")
-        if persona:
-            user_section += f"\n\n{persona}"
+        if user.persona:
+            user_section += f"\n\n{user.persona}"
         parts.append(user_section)
+        if user.cross_channel_summary:
+            parts.append(f"\n{user.cross_channel_summary}")
     parts.append(f"\n## Mode\n{MODE_PROMPTS[mode]}")
     if skill_instructions:
         parts.append(f"\n## Active skill: {skill_name}\n\n{skill_instructions}")
@@ -61,7 +62,7 @@ def build_system_prompt(
 
 def run(
     history: list[dict],
-    user: User | None,
+    user: "UserContext | None",
     mode: Literal["command", "chat"],
 ) -> tuple[str, str | None, list[str]]:
     """
