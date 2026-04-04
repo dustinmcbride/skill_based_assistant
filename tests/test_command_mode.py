@@ -13,24 +13,23 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     """Create a TestClient with isolated user storage."""
-    # Patch load_user to use tmp_path
-    import user as user_module
-    from user import User
+    from user_context import UserContext, USERNAME_RE
 
-    def fake_load_user(username):
-        import re
-        if not user_module.USERNAME_RE.match(username):
+    def fake_load_user_context_by_id(username, channel="cli"):
+        if not USERNAME_RE.match(username):
             raise ValueError(f"Invalid username {username!r}")
-        return User(
-            username=username,
+        return UserContext(
+            user_id=username,
             display_name=username.capitalize(),
-            history_path=tmp_path / username / "history.json",
+            persona="",
+            active_channel=channel,
+            channels={},
+            history_path=tmp_path / username / channel / "history.json",
+            cross_channel_summary="",
+            is_anonymous=False,
         )
 
-    import memory
-    monkeypatch.setattr("server.load_user", fake_load_user)
-
-    # Patch memory.load to return empty history
+    monkeypatch.setattr("server.load_user_context_by_id", fake_load_user_context_by_id)
     monkeypatch.setattr("server.memory.load", lambda user: [])
     monkeypatch.setattr("server.memory.save", lambda hist, user: None)
 
