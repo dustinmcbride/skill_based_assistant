@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import agent
 import memory
-from user import load_user
+from user_context import load_user_context_by_id
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -31,7 +31,7 @@ def main():
     )
     args = parser.parse_args()
 
-    user = load_user(args.user)
+    user = load_user_context_by_id(args.user)
     hist = [] if args.fresh else memory.load(user)
 
     print(f"Assistant ready. Hello, {user.display_name}! (Ctrl+C to exit)\n")
