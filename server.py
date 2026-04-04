@@ -23,7 +23,7 @@ from skills.notes.obsidian import _vault_path as _obsidian_vault_path
 from skills.trello.trello import _compact_overview, _get_cache
 from skills.process_email.agentmail import get_email_thread
 from skills.telegram import send_message as telegram_send
-from user import load_user, load_user_by_telegram_chat_id
+from user_context import load_user_context, load_user_context_by_id
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -153,7 +153,7 @@ async def capture(username: str, body: CaptureRequest, background_tasks: Backgro
     logger.info("Capture inbox entry: %s", body.message[:200])
 
     try:
-        user = load_user(username)
+        user = load_user_context_by_id(username)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -177,11 +177,12 @@ async def capture(username: str, body: CaptureRequest, background_tasks: Backgro
         try:
             response_text, _, _ = agent.run(hist, user=user, mode="command")
             logger.info("Capture agent response: %s", response_text[:500] if response_text else "(empty)")
-            if response_text and user.telegram_chat_id:
-                ok = telegram_send(user.telegram_chat_id, response_text)
-                logger.info("Capture telegram send to %s: %s", user.telegram_chat_id, "ok" if ok else "failed")
+            telegram_chat_id = user.channels.get("telegram", "")
+            if response_text and telegram_chat_id:
+                ok = telegram_send(telegram_chat_id, response_text)
+                logger.info("Capture telegram send to %s: %s", telegram_chat_id, "ok" if ok else "failed")
             else:
-                logger.warning("Capture: no telegram_chat_id for user %s or empty response", username)
+                logger.warning("Capture: no telegram channel for user %s or empty response", username)
         except Exception:
             logger.exception("Capture agent error for user %s", username)
 
@@ -273,10 +274,9 @@ async def webhook_telegram(request: Request):
 
     logger.info("Telegram message: chat_id=%r text=%r", chat_id, text[:200])
 
-    user = load_user_by_telegram_chat_id(chat_id)
-    if user is None:
-        logger.warning("Unknown Telegram chat_id: %r", chat_id)
-        return {"status": "ignored", "reason": "unknown chat_id"}
+    user = load_user_context("telegram", chat_id)
+    if user.is_anonymous:
+        logger.info("Anonymous Telegram user: chat_id=%r, assigned user_id=%r", chat_id, user.user_id)
 
     hist = memory.load(user)
     hist.append({"role": "user", "content": text})
