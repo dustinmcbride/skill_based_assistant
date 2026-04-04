@@ -13,7 +13,7 @@ def load(user) -> list[dict]:
     try:
         return json.loads(Path(path).read_text())
     except Exception as e:
-        logger.warning("Failed to load history for %s: %s", user.username, e)
+        logger.warning("Failed to load history for %s: %s", user.user_id, e)
         return []
 
 
