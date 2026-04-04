@@ -31,27 +31,26 @@ def lookup_telegram_recipient(name: str) -> str:
     tailored to the recipient before sending. Call this before send_telegram_message
     whenever messaging another user.
     """
-    # Import here to avoid circular dependency at module load time
-    from config import _CONFIG, USER_PERSONAS
+    from config import _CONFIG
+    from user_context import _load_persona
 
     name_lower = name.strip().lower()
     for entry in _CONFIG.get("users", []):
         user_id = entry.get("id", "")
         display_name = entry.get("name", "")
-        # Match on user ID or display name (case-insensitive)
         if name_lower == user_id.lower() or name_lower == display_name.lower():
-            chat_id = entry.get("telegram_chat_id")
+            channels = entry.get("channels", {})
+            chat_id = channels.get("telegram")
             if not chat_id:
                 return json.dumps({"error": f"User '{display_name}' has no Telegram chat ID configured."})
-            persona = USER_PERSONAS.get(user_id, "")
+            persona = _load_persona(entry.get("persona_url"))
             return json.dumps({
-                "chat_id": chat_id,
+                "chat_id": str(chat_id),
                 "user_id": user_id,
                 "name": display_name,
-                "persona": persona or "No persona configured for this user.",
+                "persona": persona,
             })
 
-    # Build a list of known names for the error message
     known = [e.get("name") or e.get("id") for e in _CONFIG.get("users", []) if e.get("id")]
     return json.dumps({"error": f"No user found matching '{name}'. Known users: {known}"})
 
