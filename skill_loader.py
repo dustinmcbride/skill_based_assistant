@@ -39,8 +39,15 @@ def _skill_name_from_url(dir_url: str) -> str:
     return dir_url.rstrip("/").rsplit("/", 1)[-1]
 
 
+_SKILLS_CACHE: dict[str, str] | None = None
+
+
 def discover_skills() -> dict[str, str]:
     """Return {domain_name: description} for all skill domains."""
+    global _SKILLS_CACHE
+    if _SKILLS_CACHE is not None:
+        return _SKILLS_CACHE
+
     result = {}
     for skill_md in sorted(_skills_dir().rglob("SKILL.md")):
         domain = skill_md.parent.name
@@ -58,6 +65,7 @@ def discover_skills() -> dict[str, str]:
         except Exception as e:
             logger.warning("Failed to load SKILL.md for external skill %s: %s", domain, e)
 
+    _SKILLS_CACHE = result
     return result
 
 

@@ -16,6 +16,7 @@ travel information.
   - A flight from Seattle to Sacramento → "2026-05-02_Sacramento.md"
 - To find the destination: look for "Arrives <city>", the arrival airport code, or the hotel/accommodation location.
 - Pass only the bare filename to `write_trip_file` (e.g. "2026-05-02_Paris.md") — it places the file under Trips/ automatically.
+- **Before writing, always call `read_trip_file` with the same filename.** If the file already exists, merge its existing content with the new information into one complete, well-formatted document. Do not duplicate fields — update them in place. The result passed to `write_trip_file` should always be a single, clean, fully-formatted note (never an appendage).
 - After saving, reply with one short sentence confirming what was filed and where.
 
 ## File structure

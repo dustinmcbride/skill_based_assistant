@@ -40,13 +40,13 @@ def write_trip_file(filename: str, content: str) -> str:
     """
     Write a trip note to the Obsidian vault under Trips/.
 
-    If the file already exists, the new content is appended rather than
-    overwriting, so details from multiple emails (flights, hotels, etc.)
-    are preserved in a single note.
+    Always overwrites the file with the provided content. When updating an
+    existing trip, the caller is responsible for merging old and new information
+    into a single well-formatted document before calling this function.
 
     Args:
         filename: Bare filename, e.g. "2026-05-02_Sacramento.md" (no path prefix)
-        content: Markdown content to add to the trip note
+        content: Complete markdown content for the trip note
     """
     try:
         # Ensure filename has .md extension
@@ -58,14 +58,10 @@ def write_trip_file(filename: str, content: str) -> str:
 
         trips_dir = _trips_dir()
         path = trips_dir / filename
+        existed = path.exists()
 
-        if path.exists():
-            existing = path.read_text()
-            combined = existing.rstrip("\n") + "\n\n---\n\n" + content
-            path.write_text(combined)
-            return f"Trip updated (appended): Trips/{filename}"
-        else:
-            path.write_text(content)
-            return f"Trip filed: Trips/{filename}"
+        path.write_text(content)
+        action = "updated" if existed else "filed"
+        return f"Trip {action}: Trips/{filename}"
     except Exception as e:
         return f"Error writing trip file: {e}"

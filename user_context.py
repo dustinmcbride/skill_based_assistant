@@ -17,6 +17,8 @@ DEFAULT_PERSONA = (
     "Be friendly, professional, and helpful."
 )
 
+_PERSONA_CACHE: dict[str, str] = {}
+
 _KNOWN_USERS: dict[str, dict] = {
     entry["id"]: entry
     for entry in _CONFIG.get("users", [])
@@ -40,8 +42,12 @@ def _load_persona(persona_url: str | None) -> str:
     """Load persona markdown from a URL. Returns DEFAULT_PERSONA on failure or missing URL."""
     if not persona_url:
         return DEFAULT_PERSONA
+    if persona_url in _PERSONA_CACHE:
+        return _PERSONA_CACHE[persona_url]
     try:
-        return _load_url(persona_url)
+        content = _load_url(persona_url)
+        _PERSONA_CACHE[persona_url] = content
+        return content
     except Exception as e:
         logger.warning("Failed to load persona from %s: %s", persona_url, e)
         return DEFAULT_PERSONA
