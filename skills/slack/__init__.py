@@ -1,3 +1,5 @@
+import logging
+
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 import os
@@ -5,11 +7,26 @@ import re
 
 from skills import register
 
+logger = logging.getLogger(__name__)
+
 SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN")
 
 client = WebClient(token=SLACK_BOT_TOKEN)
 
 _user_cache: dict[str, str] = {}
+_bot_user_id: str | None = None
+
+
+def get_bot_user_id() -> str | None:
+    """Return the bot's own Slack user ID, cached after first call."""
+    global _bot_user_id
+    if _bot_user_id is None:
+        try:
+            resp = client.auth_test()
+            _bot_user_id = resp["user_id"]
+        except SlackApiError as e:
+            logger.warning("Could not fetch bot user ID: %s", e.response.get("error", str(e)))
+    return _bot_user_id
 
 
 def _resolve_user_id(user_id: str) -> str:
@@ -31,6 +48,41 @@ def resolve_mentions(text: str) -> str:
     def _replace(m: re.Match) -> str:
         return f"@{_resolve_user_id(m.group(1))}"
     return re.sub(r"<@([A-Z0-9]+)>", _replace, text)
+
+
+def bot_participated_in_thread(channel: str, thread_ts: str, bot_id: str) -> bool:
+    """Return True if the bot has already replied in this thread."""
+    try:
+        resp = client.conversations_replies(channel=channel, ts=thread_ts, limit=100)
+        return any(msg.get("user") == bot_id for msg in resp.get("messages", []))
+    except SlackApiError as e:
+        logger.warning("Could not check thread participation: %s", e.response.get("error", str(e)))
+        return False
+
+
+def _fetch_channel_context(channel: str, thread_ts: str | None = None, limit: int = 20) -> str:
+    """Fetch recent messages from a channel or thread as formatted context for the agent."""
+    try:
+        if thread_ts:
+            resp = client.conversations_replies(channel=channel, ts=thread_ts, limit=limit)
+            messages = resp.get("messages", [])
+            label = "Thread history"
+        else:
+            resp = client.conversations_history(channel=channel, limit=limit)
+            messages = list(reversed(resp.get("messages", [])))
+            label = "Recent channel messages"
+
+        lines = [f"{label}:"]
+        for msg in messages:
+            user_id = msg.get("user", "")
+            name = _resolve_user_id(user_id) if user_id else msg.get("username", "bot")
+            text = resolve_mentions(msg.get("text", ""))
+            lines.append(f"  @{name}: {text}")
+
+        return "\n".join(lines)
+    except SlackApiError as e:
+        logger.warning("Failed to fetch Slack context for %s: %s", channel, e.response.get("error", str(e)))
+        return ""
 
 
 @register
